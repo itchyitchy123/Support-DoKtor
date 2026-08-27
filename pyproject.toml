@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "support-doctor"
+version = "0.1.0"
+description = "Internal Linux hosting diagnostic and recovery planning engine"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Support DoKtor" }]
+dependencies = []
+
+[project.scripts]
+support-doctor = "support_doctor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
