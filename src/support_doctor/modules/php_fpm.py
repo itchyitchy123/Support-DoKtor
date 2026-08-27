@@ -47,7 +47,7 @@ class PhpFpmModule(DiagnosticModule):
         endpoint, endpoint_count = access.endpoints.most_common(1)[0] if access.endpoints else ("unknown", 0)
         client_count = len(access.clients)
         memory = _php_memory_estimate(context.root)
-        safe_max = _safe_max_children(memory["available_mb"], memory["worker_mb"])
+        safe_max = _safe_max_children(memory["available_mb"], memory["worker_mb"], memory["worker_count"])
         recommendation = _capacity_recommendation(max_children, safe_max)
         metrics = {
             "configured_max_children": max_children,
@@ -59,7 +59,8 @@ class PhpFpmModule(DiagnosticModule):
             "reverse_proxy_detected": nginx.requests > 0 and apache.requests > 0,
         }
         if memory["worker_mb"]:
-            metrics["observed_peak_php_memory_mb"] = memory["worker_mb"]
+            metrics["observed_average_php_memory_mb"] = memory["worker_mb"]
+            metrics["observed_php_processes"] = memory["worker_count"]
         if memory["available_mb"]:
             metrics["available_php_budget_mb"] = memory["available_mb"]
         if safe_max is not None:
@@ -159,6 +160,7 @@ def _php_memory_estimate(root: Path) -> dict[str, Any]:
     if root.resolve() != Path("/"):
         return {
             "worker_mb": 0,
+            "worker_count": 0,
             "available_mb": 0,
             "reason": "Live PHP worker memory is unavailable for an offline root; capture it on the source host before tuning capacity.",
         }
@@ -169,6 +171,7 @@ def _php_memory_estimate(root: Path) -> dict[str, Any]:
         if "php-fpm" in name.lower() and value.strip().isdigit():
             rss.append(int(value.strip()) // 1024)
     worker_mb = int(sum(rss) / len(rss)) if rss else 0
+    worker_count = len(rss)
     mem = command_output(["awk", "/MemAvailable/ {print int($2/1024)}", "/proc/meminfo"])
     try:
         available_mb = int(mem)
@@ -177,6 +180,7 @@ def _php_memory_estimate(root: Path) -> dict[str, Any]:
     if available_mb <= 0:
         return {
             "worker_mb": worker_mb,
+            "worker_count": worker_count,
             "available_mb": 0,
             "reason": "PHP worker RSS and memory budget were unavailable; do not tune capacity from this report.",
         }
@@ -184,20 +188,22 @@ def _php_memory_estimate(root: Path) -> dict[str, Any]:
     if worker_mb <= 0:
         return {
             "worker_mb": 0,
+            "worker_count": 0,
             "available_mb": budget,
             "reason": "No live PHP-FPM worker RSS sample was available; capture worker memory before tuning capacity.",
         }
     return {
         "worker_mb": worker_mb,
+        "worker_count": worker_count,
         "available_mb": budget,
-        "reason": "Calculated from available memory and observed PHP process size.",
+        "reason": "Calculated from observed PHP process count and RSS plus 65% of currently available memory as headroom.",
     }
 
 
-def _safe_max_children(available_mb: int, worker_mb: int) -> Optional[int]:
+def _safe_max_children(available_mb: int, worker_mb: int, worker_count: int = 0) -> Optional[int]:
     if worker_mb <= 0:
         return None
-    return max(int(available_mb / worker_mb), 1)
+    return max(worker_count + int(available_mb / worker_mb), 1)
 
 
 def _capacity_recommendation(current: int, safe: Optional[int]) -> str:

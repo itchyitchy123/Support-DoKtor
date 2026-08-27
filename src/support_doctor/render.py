@@ -93,7 +93,7 @@ def _platform(report: Report) -> list[str]:
 def _health(report: Report) -> list[str]:
     lines = ["Health:"]
     for item in report.health:
-        lines.append(f"  {item.name + ':':<12}{item.status.value:<9} {_display(item.detail)}")
+        lines.append(f"  {item.name + ':':<18}{item.status.value:<9} {_display(item.detail)}")
     return lines
 
 
@@ -105,10 +105,11 @@ def _incident(incident: Incident) -> list[str]:
         lines.extend(["", "Primary endpoint:", f"  {_display(incident.primary_endpoint)}"])
     if incident.first_seen:
         lines.append(f"First occurrence: {_fmt_time(incident.first_seen)}")
-    lines.append("")
-    lines.append("Metrics:")
-    for key, value in incident.metrics.items():
-        lines.append(f"  {key.replace('_', ' ').title() + ':':<34}{_display(value)}")
+    if incident.metrics:
+        lines.append("")
+        lines.append("Metrics:")
+        for key, value in incident.metrics.items():
+            lines.append(f"  {key.replace('_', ' ').title() + ':':<34}{_display(value)}")
     if incident.timeline:
         lines.append("")
         lines.append("Incident timeline:")

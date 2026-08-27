@@ -1,17 +1,25 @@
 from __future__ import annotations
 
+import re
+
 from support_doctor.context import InvestigationContext
 from support_doctor.models import Evidence, Incident, Recommendation, Severity
 from support_doctor.util import parse_log_timestamp, safe_read_lines
 
 from .base import DiagnosticModule
 
+SPAM_REJECTION_RE = re.compile(
+    r"(?:\b(?:spam|blacklist|dnsbl|rbl)\b.*\b(?:reject(?:ed|ion)?|denied|blocked|refused)\b)"
+    r"|(?:\b(?:reject(?:ed|ion)?|denied|blocked|refused)\b.*\b(?:spam|blacklist|dnsbl|rbl)\b)",
+    re.IGNORECASE,
+)
+
 
 class MailModule(DiagnosticModule):
     name = "mail"
 
     def inspect(self, context: InvestigationContext) -> list[Incident]:
-        counters = {"auth_failures": 0, "spam_rejections": 0, "queue_warnings": 0}
+        counters = {"auth_failures": 0, "spam_rejections": 0, "dnsbl_warnings": 0, "queue_warnings": 0}
         evidence: list[Evidence] = []
         for path in [
             context.root / "var/log/exim_mainlog",
@@ -26,7 +34,9 @@ class MailModule(DiagnosticModule):
                 key = None
                 if "authentication failed" in lower or "auth failed" in lower:
                     key = "auth_failures"
-                elif "spam" in lower or "blacklist" in lower:
+                elif any(term in lower for term in ("dns_block_rule", "dnsblock_", "uribl_blocked")):
+                    key = "dnsbl_warnings"
+                elif SPAM_REJECTION_RE.search(line):
                     key = "spam_rejections"
                 elif "queue" in lower and ("frozen" in lower or "retry" in lower):
                     key = "queue_warnings"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .context import InvestigationContext
 from .engine import MODULES, run_investigation, run_single_module
-from .models import Mode
+from .models import Mode, Report, Severity
 from .render import render_case_summary, render_json, render_text
 from .util import parse_time
 
@@ -28,14 +28,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "case-summary":
         report = run_investigation(context)
         print(render_json(report) if args.json else render_case_summary(report))
-        return 0
-
-    if args.command == "investigate":
-        report = run_investigation(context)
     else:
-        report = run_single_module(args.command, context)
+        if args.command == "investigate":
+            report = run_investigation(context)
+        else:
+            report = run_single_module(args.command, context)
+        print(render_json(report) if args.json else render_text(report))
 
-    print(render_json(report) if args.json else render_text(report))
     if context.mode == Mode.EXECUTE:
         # Execute mode must fail closed: an empty report is not proof that an
         # action ran, and every incident must explicitly opt in to execution.
@@ -43,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
             not (incident.plan and incident.plan.execute_supported) for incident in report.incidents
         ):
             return 2
+    if args.fail_on and _threshold_exceeded(report, Severity(args.fail_on.upper())):
+        return 1
     return 0
 
 
@@ -55,6 +56,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--root", default="/", help="Alternate filesystem root for fixtures, snapshots, or mounted servers"
     )
     common.add_argument("--json", action="store_true", help="Emit sanitized structured JSON")
+    common.add_argument(
+        "--fail-on",
+        choices=("warning", "critical"),
+        help="Return exit code 1 when findings meet or exceed this severity",
+    )
     mode = common.add_mutually_exclusive_group()
     mode.add_argument("--inspect", action="store_true", help="Collect evidence only")
     mode.add_argument("--plan", action="store_true", help="Generate recovery plan without changes")
@@ -81,6 +87,19 @@ def _mode_from_args(args: argparse.Namespace) -> Mode:
     if args.execute:
         return Mode.EXECUTE
     return Mode.INSPECT
+
+
+def _threshold_exceeded(report: Report, threshold: Severity) -> bool:
+    rank = {
+        Severity.UNKNOWN: 0,
+        Severity.OK: 1,
+        Severity.INFO: 2,
+        Severity.WARNING: 3,
+        Severity.CRITICAL: 4,
+    }
+    statuses = [check.status for check in report.health]
+    statuses.extend(incident.severity for incident in report.incidents)
+    return any(rank[status] >= rank[threshold] for status in statuses)
 
 
 if __name__ == "__main__":

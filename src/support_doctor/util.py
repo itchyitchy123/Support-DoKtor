@@ -111,7 +111,7 @@ def command_output(args: list[str], timeout: int = 2) -> str:
     import subprocess
 
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(  # noqa: S603 -- argv execution only; shell is never enabled
             args,
             check=False,
             stdout=subprocess.PIPE,

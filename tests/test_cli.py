@@ -120,6 +120,15 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("No supported configuration changes performed.", out)
 
+    def test_fail_on_critical_provides_automation_exit_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_fixture(root)
+            code, out = _run(["investigate", "--root", str(root), "--fail-on", "critical"])
+
+        self.assertEqual(code, 1)
+        self.assertIn("PHP-FPM pool reached pm.max_children", out)
+
     def test_offline_root_does_not_use_live_php_memory(self):
         with tempfile.TemporaryDirectory() as tmp:
             estimate = _php_memory_estimate(Path(tmp))

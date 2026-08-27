@@ -10,7 +10,7 @@ Support DoKtor is a read-first Linux hosting diagnostic and recovery-planning CL
 ## Capabilities
 
 - Detects Linux distribution, hosting panel, web stack, PHP, and database versions.
-- Checks load, memory, disk, and common service state.
+- Checks privileges, load, memory, swap, disk capacity, inode capacity, and common service state.
 - Correlates PHP-FPM saturation with Apache or Nginx request traffic.
 - Identifies database, mail, WordPress, and security log anomalies.
 - Reads current and compressed rotated logs with bounded memory and I/O.
@@ -48,6 +48,9 @@ sudo support-doctor mysql --plan
 
 # Emit reduced structured output for downstream processing
 sudo support-doctor investigate --json > report.json
+
+# Let monitoring fail when warning-or-higher findings are present
+sudo support-doctor investigate --json --fail-on warning > report.json
 ```
 
 Commands include `investigate`, `case-summary`, `php-fpm`, `web`, `apache`, `nginx`, `mysql`, `mariadb`, `mail`, `wordpress`, `security`, `ssl`, and `migration`.
@@ -56,9 +59,13 @@ Commands include `investigate`, `case-summary`, `php-fpm`, `web`, `apache`, `ngi
 
 The default mode is `--inspect` and does not mutate system configuration. `--plan` adds proposed actions and rollback guidance without making changes. `--execute` is fail-closed: modules must explicitly implement and opt in to an action, otherwise the command returns exit code `2`. No module in v0.1.0 performs remediation.
 
+By default, a completed diagnostic exits `0` even when it finds an incident. Automation can opt into policy enforcement with `--fail-on warning` or `--fail-on critical`: exit code `1` means the configured severity was reached, while `2` means execution was unsupported or command usage was invalid.
+
 The JSON report intentionally excludes raw evidence, hostnames, client IP addresses, and customer filesystem paths. Human-readable reports can contain log evidence and should be handled as sensitive incident data.
 
 Remote SSL inspection only connects to globally routable addresses. Diagnostic collection is bounded to 64 MiB per log, 512 files per scanned log directory, and 10,000 directories per WordPress discovery scan.
+
+For live-host investigations, run as root so protected logs and complete service state are available. Non-root execution remains read-only but emits a warning that evidence may be incomplete. Service discovery recognizes common Debian/Ubuntu, RHEL-family, cPanel EA-PHP, MariaDB, and MySQL systemd unit names. Filesystem checks deduplicate the mounts backing `/`, `/var`, `/home`, and `/tmp`.
 
 ## Development
 

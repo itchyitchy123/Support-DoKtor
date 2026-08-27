@@ -1,4 +1,4 @@
-.PHONY: setup format lint type test coverage build check clean
+.PHONY: setup format lint dependencies type test coverage build check clean
 
 PYTHON ?= python3
 
@@ -13,6 +13,9 @@ lint:
 	$(PYTHON) -m ruff format --check .
 	$(PYTHON) -m ruff check .
 
+dependencies:
+	$(PYTHON) -m pip check
+
 type:
 	$(PYTHON) -m mypy src
 
@@ -26,7 +29,7 @@ coverage:
 build:
 	$(PYTHON) -m build
 
-check: lint type coverage build
+check: lint dependencies type coverage build
 
 clean:
 	$(PYTHON) -m coverage erase

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import re
+
 from support_doctor.context import InvestigationContext
 from support_doctor.models import Evidence, Incident, Recommendation, Severity
 from support_doctor.util import parse_log_timestamp, safe_read_lines
 
 from .base import DiagnosticModule
+
+SECURITY_EVENT_RE = re.compile(
+    r"failed password|mod_?security.*(?:access denied|denied with code|warning|error)"
+    r"|\bblocked\b|\bban(?:ned)?\s+[0-9a-f:.]+\b|\bsuspicious\b",
+    re.IGNORECASE,
+)
 
 
 class SecurityModule(DiagnosticModule):
@@ -22,8 +30,7 @@ class SecurityModule(DiagnosticModule):
                 ts = parse_log_timestamp(line, year=context.center_time.year if context.center_time else None)
                 if not context.in_window(ts):
                     continue
-                lower = line.lower()
-                if any(term in lower for term in ("failed password", "mod_security", "blocked", "ban ", "suspicious")):
+                if SECURITY_EVENT_RE.search(line):
                     if len(evidence) < 40:
                         evidence.append(Evidence(str(source), line, Severity.WARNING, ts))
         if not evidence:
