@@ -25,10 +25,17 @@ class MigrationModule(DiagnosticModule):
                 severity=Severity.INFO,
                 probable_cause="operator_requested_assessment",
                 metrics=present,
-                evidence=[Evidence("filesystem", f"{name}: {'present' if ok else 'missing'}") for name, ok in present.items()],
+                evidence=[
+                    Evidence("filesystem", f"{name}: {'present' if ok else 'missing'}") for name, ok in present.items()
+                ],
                 recommendations=[
-                    Recommendation("Inventory domains, databases, mailboxes, DNS, and SSL material", "Migration failures usually come from missing service inventory."),
-                    Recommendation("Validate source backups before cutover", "Rollback quality depends on backup completeness."),
+                    Recommendation(
+                        "Inventory domains, databases, mailboxes, DNS, and SSL material",
+                        "Migration failures usually come from missing service inventory.",
+                    ),
+                    Recommendation(
+                        "Validate source backups before cutover", "Rollback quality depends on backup completeness."
+                    ),
                 ],
             )
         ]

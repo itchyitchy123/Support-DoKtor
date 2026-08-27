@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Iterable
 
 
 class Severity(str, Enum):
@@ -25,8 +25,8 @@ class Evidence:
     source: str
     detail: str
     severity: Severity = Severity.INFO
-    timestamp: Optional[datetime] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    timestamp: datetime | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -48,10 +48,10 @@ class Recommendation:
 @dataclass
 class RecoveryPlan:
     risk: Severity
-    proposed_actions: List[str]
-    rollback: List[str]
+    proposed_actions: list[str]
+    rollback: list[str]
     execute_supported: bool = False
-    notes: List[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -60,16 +60,16 @@ class Incident:
     title: str
     severity: Severity
     probable_cause: str
-    affected_domain: Optional[str] = None
-    primary_endpoint: Optional[str] = None
-    first_seen: Optional[datetime] = None
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    evidence: List[Evidence] = field(default_factory=list)
-    timeline: List[TimelineEvent] = field(default_factory=list)
-    recommendations: List[Recommendation] = field(default_factory=list)
-    plan: Optional[RecoveryPlan] = None
+    affected_domain: str | None = None
+    primary_endpoint: str | None = None
+    first_seen: datetime | None = None
+    metrics: dict[str, Any] = field(default_factory=dict)
+    evidence: list[Evidence] = field(default_factory=list)
+    timeline: list[TimelineEvent] = field(default_factory=list)
+    recommendations: list[Recommendation] = field(default_factory=list)
+    plan: RecoveryPlan | None = None
 
-    def sanitized_json(self, platform: Dict[str, str]) -> Dict[str, Any]:
+    def sanitized_json(self, platform: dict[str, str]) -> dict[str, Any]:
         return {
             "incident": self.key,
             "severity": self.severity.value.lower(),
@@ -95,9 +95,9 @@ class HealthCheck:
 
 @dataclass
 class Report:
-    platform: Dict[str, str]
-    health: List[HealthCheck]
-    incidents: List[Incident]
+    platform: dict[str, str]
+    health: list[HealthCheck]
+    incidents: list[Incident]
     generated_at: datetime
     mode: Mode = Mode.INSPECT
 

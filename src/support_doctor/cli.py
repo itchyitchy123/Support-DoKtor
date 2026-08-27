@@ -36,8 +36,13 @@ def main(argv: list[str] | None = None) -> int:
         report = run_single_module(args.command, context)
 
     print(render_json(report) if args.json else render_text(report))
-    if context.mode == Mode.EXECUTE and any(not (i.plan and i.plan.execute_supported) for i in report.incidents):
-        return 2
+    if context.mode == Mode.EXECUTE:
+        # Execute mode must fail closed: an empty report is not proof that an
+        # action ran, and every incident must explicitly opt in to execution.
+        if not report.incidents or any(
+            not (incident.plan and incident.plan.execute_supported) for incident in report.incidents
+        ):
+            return 2
     return 0
 
 
@@ -46,14 +51,22 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("--domain", help="Domain to focus log correlation on")
     common.add_argument("--time", help='Center time for historical reconstruction, e.g. "2026-08-26 03:17"')
     common.add_argument("--window", type=int, default=10, help="Minutes before and after --time to inspect")
-    common.add_argument("--root", default="/", help="Alternate filesystem root for fixtures, snapshots, or mounted servers")
+    common.add_argument(
+        "--root", default="/", help="Alternate filesystem root for fixtures, snapshots, or mounted servers"
+    )
     common.add_argument("--json", action="store_true", help="Emit sanitized structured JSON")
     mode = common.add_mutually_exclusive_group()
     mode.add_argument("--inspect", action="store_true", help="Collect evidence only")
     mode.add_argument("--plan", action="store_true", help="Generate recovery plan without changes")
-    mode.add_argument("--execute", action="store_true", help="Execute approved module actions where implemented")
+    mode.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute approved module actions where implemented (fails closed when unsupported)",
+    )
 
-    parser = argparse.ArgumentParser(prog="support-doctor", description="Linux hosting diagnostic and recovery planning engine")
+    parser = argparse.ArgumentParser(
+        prog="support-doctor", description="Linux hosting diagnostic and recovery planning engine"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("investigate", parents=[common], help="Run broad hosting incident investigation")
     sub.add_parser("case-summary", parents=[common], help="Generate engineer-ready case summary")

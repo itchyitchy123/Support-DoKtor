@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import bz2
+import gzip
+import lzma
 import os
 import re
 import socket
-import bz2
 from collections import deque
 from datetime import datetime
-import gzip
-import lzma
 from pathlib import Path
-from typing import Iterable, Iterator, Optional
-
+from typing import Iterable, Iterator, Optional, TextIO
 
 MAX_DIRECTORY_LOG_FILES = 512
 MAX_LOG_BYTES = 64 * 1024 * 1024
@@ -89,7 +88,7 @@ def _try_parse(value: str, fmt: str) -> Optional[datetime]:
         return None
 
 
-def _open_log(path: Path):
+def _open_log(path: Path) -> TextIO:
     if path.name.endswith(".gz"):
         return gzip.open(path, "rt", encoding="utf-8", errors="replace")
     if path.name.endswith(".bz2"):

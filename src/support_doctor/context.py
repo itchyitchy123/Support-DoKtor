@@ -21,6 +21,8 @@ class InvestigationContext:
             raise ValueError("--window must be zero or greater")
         if not self.root.is_absolute():
             self.root = self.root.absolute()
+        if not self.root.is_dir():
+            raise ValueError(f"--root must be an existing directory: {self.root}")
 
     @property
     def start_time(self) -> Optional[datetime]:

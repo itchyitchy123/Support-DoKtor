@@ -18,7 +18,10 @@ class DiagnosticModule(ABC):
         for incident in incidents:
             incident.plan = RecoveryPlan(
                 risk=Severity.WARNING,
-                proposed_actions=["Preserve collected evidence", "Review the diagnostic recommendations before making changes"],
+                proposed_actions=[
+                    "Preserve collected evidence",
+                    "Review the diagnostic recommendations before making changes",
+                ],
                 rollback=["No changes were made by this plan"],
                 execute_supported=False,
                 notes=[f"{self.name} execute mode is not implemented; operator approval is still required."],

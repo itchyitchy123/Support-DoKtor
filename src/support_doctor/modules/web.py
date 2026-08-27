@@ -34,10 +34,16 @@ class WebModule(DiagnosticModule):
                         "top_client_request_counts": [count for _client, count in summary.clients.most_common(5)],
                     },
                     evidence=[
-                        Evidence(server, f"Analyzed {summary.requests} request(s) from {len(summary.source_paths)} log path(s)")
+                        Evidence(
+                            server,
+                            f"Analyzed {summary.requests} request(s) from {len(summary.source_paths)} log path(s)",
+                        )
                     ],
                     recommendations=[
-                        Recommendation("Review top endpoints and client concentration", "Traffic shape can reveal abusive clients or slow application paths.")
+                        Recommendation(
+                            "Review top endpoints and client concentration",
+                            "Traffic shape can reveal abusive clients or slow application paths.",
+                        )
                     ],
                 )
             )

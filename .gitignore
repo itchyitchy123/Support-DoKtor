@@ -8,4 +8,10 @@ build/
 *.egg-info/
 .coverage
 .mypy_cache/
-
+.ruff_cache/
+.coverage.*
+coverage.xml
+htmlcov/
+.idea/
+.vscode/
+.DS_Store

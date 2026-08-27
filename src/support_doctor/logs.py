@@ -10,7 +10,6 @@ from typing import Iterable, Optional
 from .context import InvestigationContext
 from .util import parse_log_timestamp, safe_read_lines
 
-
 ACCESS_RE = re.compile(r'"(?:GET|POST|HEAD|PUT|DELETE|OPTIONS|PATCH)\s+([^ ?"]+)')
 IP_RE = re.compile(r"^(\S+)")
 

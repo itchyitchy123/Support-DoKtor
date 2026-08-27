@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -13,9 +12,9 @@ from support_doctor.util import command_output, parse_log_timestamp, safe_read_l
 
 from .base import DiagnosticModule
 
-
 MAX_CHILDREN_RE = re.compile(r"server reached pm\.max_children setting \((\d+)\)", re.I)
 POOL_RE = re.compile(r"\[pool ([^\]]+)\]")
+FpmHit = tuple[Path, str, datetime | None, int, str | None]
 
 
 class PhpFpmModule(DiagnosticModule):
@@ -23,7 +22,7 @@ class PhpFpmModule(DiagnosticModule):
 
     def inspect(self, context: InvestigationContext) -> list[Incident]:
         log_paths = _php_fpm_logs(context.root)
-        hits = []
+        hits: list[FpmHit] = []
         for path, line in safe_read_lines(log_paths, limit=None if context.center_time else 20000):
             ts = parse_log_timestamp(line, year=context.center_time.year if context.center_time else None)
             if not context.in_window(ts):
@@ -31,22 +30,23 @@ class PhpFpmModule(DiagnosticModule):
             match = MAX_CHILDREN_RE.search(line)
             if not match:
                 continue
-            pool = POOL_RE.search(line)
-            hits.append((path, line, ts, int(match.group(1)), pool.group(1) if pool else None))
+            pool_match = POOL_RE.search(line)
+            hits.append((path, line, ts, int(match.group(1)), pool_match.group(1) if pool_match else None))
 
         if not hits:
             return []
 
-        first = min((hit for hit in hits if hit[2]), key=lambda hit: hit[2], default=hits[0])
+        first_seen = min((hit[2] for hit in hits if hit[2] is not None), default=None)
+        first = next((hit for hit in hits if hit[2] == first_seen), hits[0])
         max_children = max(hit[3] for hit in hits)
-        pool = first[4] or context.domain
+        pool_name = first[4] or context.domain
         access_logs = common_access_logs(context.root)
         apache = summarize_access(access_logs["apache"], context)
         nginx = summarize_access(access_logs["nginx"], context)
         access = nginx if nginx.requests >= apache.requests else apache
         endpoint, endpoint_count = access.endpoints.most_common(1)[0] if access.endpoints else ("unknown", 0)
         client_count = len(access.clients)
-        memory = _php_memory_estimate()
+        memory = _php_memory_estimate(context.root)
         safe_max = _safe_max_children(memory["available_mb"], memory["worker_mb"])
         recommendation = _capacity_recommendation(max_children, safe_max)
         metrics = {
@@ -93,21 +93,29 @@ class PhpFpmModule(DiagnosticModule):
             title="PHP-FPM pool reached pm.max_children",
             severity=Severity.CRITICAL,
             probable_cause="application_concurrency",
-            affected_domain=context.domain or pool,
+            affected_domain=context.domain or pool_name,
             primary_endpoint=endpoint,
             first_seen=first[2],
             metrics=metrics,
             evidence=[
-                Evidence(str(path), line, Severity.CRITICAL, ts, {"pool": pool, "max_children": size})
-                for path, line, ts, size, pool in hits[:20]
+                Evidence(str(path), line, Severity.CRITICAL, ts, {"pool": hit_pool, "max_children": size})
+                for path, line, ts, size, hit_pool in hits[:20]
             ],
             timeline=timeline,
             recommendations=[
-                Recommendation("Analyze PHP worker memory", "Worker sizing determines whether capacity can be increased safely."),
+                Recommendation(
+                    "Analyze PHP worker memory", "Worker sizing determines whether capacity can be increased safely."
+                ),
                 Recommendation(recommendation, memory["reason"], Severity.WARNING),
-                Recommendation(f"Inspect {endpoint} execution time", "Primary endpoint dominates correlated request volume."),
-                Recommendation("Check database query latency", "PHP worker exhaustion can be caused by slow downstream queries."),
-                Recommendation("Check for abusive clients", "High request concurrency may be concentrated in a small client set."),
+                Recommendation(
+                    f"Inspect {endpoint} execution time", "Primary endpoint dominates correlated request volume."
+                ),
+                Recommendation(
+                    "Check database query latency", "PHP worker exhaustion can be caused by slow downstream queries."
+                ),
+                Recommendation(
+                    "Check for abusive clients", "High request concurrency may be concentrated in a small client set."
+                ),
             ],
         )
         return [incident]
@@ -147,7 +155,13 @@ def _php_fpm_logs(root: Path) -> list[Path]:
     return list(dict.fromkeys(candidates))
 
 
-def _php_memory_estimate() -> dict[str, Any]:
+def _php_memory_estimate(root: Path) -> dict[str, Any]:
+    if root.resolve() != Path("/"):
+        return {
+            "worker_mb": 0,
+            "available_mb": 0,
+            "reason": "Live PHP worker memory is unavailable for an offline root; capture it on the source host before tuning capacity.",
+        }
     out = command_output(["ps", "-eo", "comm=,rss="])
     rss = []
     for line in out.splitlines():
@@ -161,11 +175,23 @@ def _php_memory_estimate() -> dict[str, Any]:
     except ValueError:
         available_mb = 0
     if available_mb <= 0:
-        return {"worker_mb": worker_mb, "available_mb": 0, "reason": "PHP worker RSS and memory budget were unavailable; do not tune capacity from this report."}
+        return {
+            "worker_mb": worker_mb,
+            "available_mb": 0,
+            "reason": "PHP worker RSS and memory budget were unavailable; do not tune capacity from this report.",
+        }
     budget = int(available_mb * 0.65)
     if worker_mb <= 0:
-        return {"worker_mb": 0, "available_mb": budget, "reason": "No live PHP-FPM worker RSS sample was available; capture worker memory before tuning capacity."}
-    return {"worker_mb": worker_mb, "available_mb": budget, "reason": "Calculated from available memory and observed PHP process size."}
+        return {
+            "worker_mb": 0,
+            "available_mb": budget,
+            "reason": "No live PHP-FPM worker RSS sample was available; capture worker memory before tuning capacity.",
+        }
+    return {
+        "worker_mb": worker_mb,
+        "available_mb": budget,
+        "reason": "Calculated from available memory and observed PHP process size.",
+    }
 
 
 def _safe_max_children(available_mb: int, worker_mb: int) -> Optional[int]:

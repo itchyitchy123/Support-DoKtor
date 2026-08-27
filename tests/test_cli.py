@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import gzip
 import io
 import json
-import gzip
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
 from support_doctor.cli import main
+from support_doctor.modules.php_fpm import _php_memory_estimate
 from support_doctor.modules.ssl import _fetch_public_certificate
 
 
@@ -83,7 +84,9 @@ class CliTests(unittest.TestCase):
             rotated = root / "var/log/php-fpm/error.log.1.gz"
             rotated.parent.mkdir(parents=True, exist_ok=True)
             with gzip.open(rotated, "wt", encoding="utf-8") as handle:
-                handle.write("[26-Aug-2025 03:17:00] WARNING: [pool site] server reached pm.max_children setting (12)\n")
+                handle.write(
+                    "[26-Aug-2025 03:17:00] WARNING: [pool site] server reached pm.max_children setting (12)\n"
+                )
             _write(root / "var/log/maillog", "Aug 26 03:17:00 host dovecot: authentication failed\n")
             code, out = _run(["php-fpm", "--root", str(root), "--time", "2025-08-26 03:17"])
             mail_code, mail_out = _run(["mail", "--root", str(root), "--time", "2025-08-26 03:17"])
@@ -102,6 +105,39 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn("203.0.113.10", out)
         self.assertNotIn('"host"', out)
+
+    def test_json_timestamp_is_utc(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = _run(["web", "--root", tmp, "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(out)["generated_at"].endswith("+00:00"))
+
+    def test_execute_fails_closed_when_no_action_is_supported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = _run(["web", "--root", tmp, "--execute"])
+
+        self.assertEqual(code, 2)
+        self.assertIn("No supported configuration changes performed.", out)
+
+    def test_offline_root_does_not_use_live_php_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            estimate = _php_memory_estimate(Path(tmp))
+
+        self.assertEqual(estimate["worker_mb"], 0)
+        self.assertEqual(estimate["available_mb"], 0)
+        self.assertIn("offline root", estimate["reason"])
+
+    def test_wordpress_json_does_not_expose_customer_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            customer_root = root / "home/customer/public_html"
+            _write(customer_root / "wp-config.php", "<?php\n")
+            code, out = _run(["wordpress", "--root", str(root), "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertNotIn("customer", out)
+        self.assertEqual(json.loads(out)["incidents"][0]["metrics"]["wordpress_root_count"], 1)
 
     def test_ssl_rejects_private_targets_before_connecting(self):
         with self.assertRaises(ValueError):

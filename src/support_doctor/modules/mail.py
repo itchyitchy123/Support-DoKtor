@@ -12,8 +12,12 @@ class MailModule(DiagnosticModule):
 
     def inspect(self, context: InvestigationContext) -> list[Incident]:
         counters = {"auth_failures": 0, "spam_rejections": 0, "queue_warnings": 0}
-        evidence = []
-        for path in [context.root / "var/log/exim_mainlog", context.root / "var/log/maillog", context.root / "var/log/mail.log"]:
+        evidence: list[Evidence] = []
+        for path in [
+            context.root / "var/log/exim_mainlog",
+            context.root / "var/log/maillog",
+            context.root / "var/log/mail.log",
+        ]:
             for source, line in safe_read_lines([path], limit=None if context.center_time else 20000):
                 ts = parse_log_timestamp(line, year=context.center_time.year if context.center_time else None)
                 if not context.in_window(ts):
@@ -42,8 +46,13 @@ class MailModule(DiagnosticModule):
                 evidence=evidence,
                 recommendations=[
                     Recommendation("Inspect mail queue", "Queue growth can confirm delivery impact."),
-                    Recommendation("Check authentication source IPs", "Repeated failures may indicate compromised credentials or brute force."),
-                    Recommendation("Review DNSBL and SPF/DKIM/DMARC status", "Rejections may be reputation or DNS related."),
+                    Recommendation(
+                        "Check authentication source IPs",
+                        "Repeated failures may indicate compromised credentials or brute force.",
+                    ),
+                    Recommendation(
+                        "Review DNSBL and SPF/DKIM/DMARC status", "Rejections may be reputation or DNS related."
+                    ),
                 ],
             )
         ]

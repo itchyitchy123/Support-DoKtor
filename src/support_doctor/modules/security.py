@@ -11,7 +11,7 @@ class SecurityModule(DiagnosticModule):
     name = "security"
 
     def inspect(self, context: InvestigationContext) -> list[Incident]:
-        evidence = []
+        evidence: list[Evidence] = []
         for path in [
             context.root / "var/log/secure",
             context.root / "var/log/messages",
@@ -36,8 +36,13 @@ class SecurityModule(DiagnosticModule):
                 probable_cause="security_log_anomalies",
                 evidence=evidence,
                 recommendations=[
-                    Recommendation("Group events by source IP", "Concentration can distinguish attack traffic from normal user errors."),
-                    Recommendation("Check ModSecurity and firewall rule IDs", "False positives require rule-specific evidence."),
+                    Recommendation(
+                        "Group events by source IP",
+                        "Concentration can distinguish attack traffic from normal user errors.",
+                    ),
+                    Recommendation(
+                        "Check ModSecurity and firewall rule IDs", "False positives require rule-specific evidence."
+                    ),
                 ],
             )
         ]

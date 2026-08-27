@@ -8,7 +8,6 @@ from support_doctor.util import parse_log_timestamp, safe_read_lines
 
 from .base import DiagnosticModule
 
-
 ERROR_PATTERNS = {
     "database_crash": ("crash", "segfault", "signal", "aborting"),
     "innodb_corruption": ("innodb: corruption", "page corruption", "innodb_force_recovery"),
@@ -42,8 +41,14 @@ class MysqlModule(DiagnosticModule):
                     first_seen=min((item.timestamp for item in evidence if item.timestamp), default=None),
                     evidence=evidence[:25],
                     recommendations=[
-                        Recommendation("Preserve database logs and configuration", "Recovery decisions need the original failure evidence."),
-                        Recommendation("Check backups before repair attempts", "Physical and logical backup state controls recovery risk."),
+                        Recommendation(
+                            "Preserve database logs and configuration",
+                            "Recovery decisions need the original failure evidence.",
+                        ),
+                        Recommendation(
+                            "Check backups before repair attempts",
+                            "Physical and logical backup state controls recovery risk.",
+                        ),
                     ],
                 )
             )

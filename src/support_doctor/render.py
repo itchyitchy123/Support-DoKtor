@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime
 
-from .models import Incident, Report, Severity
+from .models import Incident, Report
 
 
 def render_text(report: Report) -> str:
@@ -23,6 +23,8 @@ def render_text(report: Report) -> str:
     lines.append("")
     if report.mode.value != "execute":
         lines.append("No configuration changes performed.")
+    elif not any(incident.plan and incident.plan.execute_supported for incident in report.incidents):
+        lines.append("No supported configuration changes performed.")
     return "\n".join(lines)
 
 
@@ -38,7 +40,9 @@ def render_case_summary(report: Report) -> str:
     sentence = " ".join(bits).strip() + "."
     details = []
     if "configured_max_children" in incident.metrics:
-        details.append(f"The pool reported reaching its configured ceiling of {incident.metrics['configured_max_children']} workers")
+        details.append(
+            f"The pool reported reaching its configured ceiling of {incident.metrics['configured_max_children']} workers"
+        )
     if incident.primary_endpoint:
         if details:
             details[-1] = f"{details[-1]} during increased requests to {incident.primary_endpoint}"
@@ -48,11 +52,17 @@ def render_case_summary(report: Report) -> str:
         safe = incident.metrics["calculated_safe_max_children"]
         current = incident.metrics.get("current_max_children")
         if current and safe <= current:
-            details.append("Increasing PHP-FPM capacity is not currently recommended based on the calculated memory budget")
+            details.append(
+                "Increasing PHP-FPM capacity is not currently recommended based on the calculated memory budget"
+            )
     if details:
         sentence += " " + ". ".join(details) + "."
     if incident.recommendations:
-        sentence += " Further investigation should focus on " + ", ".join(r.action.lower() for r in incident.recommendations[:3]) + "."
+        sentence += (
+            " Further investigation should focus on "
+            + ", ".join(r.action.lower() for r in incident.recommendations[:3])
+            + "."
+        )
     return sentence
 
 
@@ -88,7 +98,7 @@ def _health(report: Report) -> list[str]:
 
 
 def _incident(incident: Incident) -> list[str]:
-    lines = ["Detected incident:", "", f"  {incident.title}", ""]
+    lines = ["Detected incident:", "", f"  {_display(incident.title)}", ""]
     if incident.affected_domain:
         lines.append(f"Domain: {_display(incident.affected_domain)}")
     if incident.primary_endpoint:
@@ -98,7 +108,7 @@ def _incident(incident: Incident) -> list[str]:
     lines.append("")
     lines.append("Metrics:")
     for key, value in incident.metrics.items():
-            lines.append(f"  {key.replace('_', ' ').title() + ':':<34}{_display(value)}")
+        lines.append(f"  {key.replace('_', ' ').title() + ':':<34}{_display(value)}")
     if incident.timeline:
         lines.append("")
         lines.append("Incident timeline:")
@@ -112,7 +122,7 @@ def _incident(incident: Incident) -> list[str]:
             lines.append(f"  {prefix}{_display(item.source)}: {_display(item.detail[:180])}")
     lines.append("")
     lines.append("Probable cause:")
-    lines.append(f"  {incident.probable_cause.replace('_', ' ')}")
+    lines.append(f"  {_display(incident.probable_cause.replace('_', ' '))}")
     if incident.recommendations:
         lines.append("")
         lines.append("Recommended next steps:")

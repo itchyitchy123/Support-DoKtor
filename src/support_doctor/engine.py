@@ -1,16 +1,22 @@
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
 
 from .context import InvestigationContext
 from .health import collect_health
-from .models import Mode, Report
-from .models import Evidence, Incident, Recommendation, Severity
-from .modules import MailModule, MigrationModule, MysqlModule, PhpFpmModule, SecurityModule, SslModule, WebModule, WordpressModule
+from .models import Evidence, Incident, Mode, Recommendation, Report, Severity
+from .modules import (
+    MailModule,
+    MigrationModule,
+    MysqlModule,
+    PhpFpmModule,
+    SecurityModule,
+    SslModule,
+    WebModule,
+    WordpressModule,
+)
 from .modules.base import DiagnosticModule
 from .platform import detect_platform
-
 
 MODULES: dict[str, DiagnosticModule] = {
     "web": WebModule(),
@@ -38,7 +44,13 @@ def run_investigation(context: InvestigationContext, module_names: list[str] | N
         module = MODULES[module_name]
         incidents.extend(_run_module(module, context))
     incidents.sort(key=lambda item: _severity_rank(item.severity), reverse=True)
-    return Report(platform=platform, health=health, incidents=incidents, generated_at=datetime.now(), mode=context.mode)
+    return Report(
+        platform=platform,
+        health=health,
+        incidents=incidents,
+        generated_at=datetime.now(timezone.utc),
+        mode=context.mode,
+    )
 
 
 def run_single_module(module_name: str, context: InvestigationContext) -> Report:
@@ -47,10 +59,16 @@ def run_single_module(module_name: str, context: InvestigationContext) -> Report
     module = MODULES[module_name]
     incidents = _run_module(module, context)
     incidents.sort(key=lambda item: _severity_rank(item.severity), reverse=True)
-    return Report(platform=platform, health=health, incidents=incidents, generated_at=datetime.now(), mode=context.mode)
+    return Report(
+        platform=platform,
+        health=health,
+        incidents=incidents,
+        generated_at=datetime.now(timezone.utc),
+        mode=context.mode,
+    )
 
 
-def _run_module(module: DiagnosticModule, context: InvestigationContext):
+def _run_module(module: DiagnosticModule, context: InvestigationContext) -> list[Incident]:
     try:
         if context.mode == Mode.PLAN:
             return module.plan(context)
@@ -65,10 +83,12 @@ def _run_module(module: DiagnosticModule, context: InvestigationContext):
                 severity=Severity.WARNING,
                 probable_cause="diagnostic_collection_failure",
                 evidence=[Evidence(module.name, f"{type(exc).__name__}: {exc}", Severity.WARNING)],
-                recommendations=[Recommendation("Retry with narrower scope", "The module could not collect complete evidence.")],
+                recommendations=[
+                    Recommendation("Retry with narrower scope", "The module could not collect complete evidence.")
+                ],
             )
         ]
 
 
-def _severity_rank(value) -> int:
+def _severity_rank(value: Severity) -> int:
     return {"CRITICAL": 4, "WARNING": 3, "INFO": 2, "OK": 1, "UNKNOWN": 0}.get(value.value, 0)
