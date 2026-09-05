@@ -31,7 +31,9 @@ def summarize_access(paths: Iterable[Path], context: InvestigationContext) -> Ac
     last_seen = None
     source_paths = set()
     requests = 0
-    for path, line in safe_read_lines(paths, limit=None if context.center_time else 20000):
+    for path, line in safe_read_lines(
+        paths, limit=None if context.center_time else 20000, root=context.root, budget=context.scan_budget
+    ):
         ts = parse_log_timestamp(line, year=context.center_time.year if context.center_time else None)
         if not context.in_window(ts):
             continue
@@ -71,7 +73,9 @@ def common_access_logs(root: Path) -> dict[str, list[Path]]:
 
 def bucket_counts(paths: Iterable[Path], context: InvestigationContext) -> dict[datetime, int]:
     buckets: dict[datetime, int] = defaultdict(int)
-    for _path, line in safe_read_lines(paths, limit=None if context.center_time else 20000):
+    for _path, line in safe_read_lines(
+        paths, limit=None if context.center_time else 20000, root=context.root, budget=context.scan_budget
+    ):
         ts = parse_log_timestamp(line, year=context.center_time.year if context.center_time else None)
         if not ts or not context.in_window(ts):
             continue

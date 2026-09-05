@@ -16,9 +16,11 @@ from support_doctor.modules.migration import MigrationModule
 from support_doctor.modules.php_fpm import _safe_max_children
 from support_doctor.modules.security import SecurityModule
 from support_doctor.modules.ssl import _fetch_public_certificate
+from support_doctor.modules.web import WebModule
+from support_doctor.modules.wordpress import _wordpress_roots
 from support_doctor.platform import _database_version, detect_platform
 from support_doctor.render import render_json, render_text
-from support_doctor.util import parse_log_timestamp, parse_time
+from support_doctor.util import parse_log_timestamp, parse_time, safe_read_lines
 
 
 class CoreTests(unittest.TestCase):
@@ -35,12 +37,49 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             InvestigationContext(root=Path("/definitely/not/a/support-doctor-root"))
 
+    def test_offline_root_does_not_follow_external_symlinks(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside:
+            root = Path(tmp)
+            external = Path(outside)
+            (external / "public").mkdir()
+            (external / "public/wp-config.php").write_text("<?php", encoding="utf-8")
+            (external / "secret.log").write_text("external-secret\n", encoding="utf-8")
+            (root / "home").symlink_to(external, target_is_directory=True)
+            log_dir = root / "var/log"
+            log_dir.mkdir(parents=True)
+            (log_dir / "access.log").symlink_to(external / "secret.log")
+
+            self.assertEqual(_wordpress_roots(root), [])
+            self.assertEqual(list(safe_read_lines([log_dir / "access.log"], root=root)), [])
+
+    def test_web_aliases_scope_log_families(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            line = '203.0.113.10 - - [26/Aug/2026:03:17:00 +0000] "GET /index.php HTTP/1.1" 200 1\n'
+            _write(root / "var/log/apache2/access.log", line)
+            _write(root / "var/log/nginx/access.log", line)
+
+            apache = WebModule("apache").inspect(InvestigationContext(root=root))
+            nginx = WebModule("nginx").inspect(InvestigationContext(root=root))
+
+        self.assertEqual([incident.key for incident in apache], ["apache_traffic_profile"])
+        self.assertEqual([incident.key for incident in nginx], ["nginx_traffic_profile"])
+
     def test_time_parsers_cover_supported_log_formats(self):
         self.assertEqual(parse_time("2026-08-26T03:17:00"), datetime(2026, 8, 26, 3, 17))
+        self.assertEqual(parse_time("2026-08-26T03:17:00-0500"), datetime(2026, 8, 26, 8, 17))
         self.assertEqual(parse_log_timestamp("[26-Aug-2026 03:17:00] warning"), datetime(2026, 8, 26, 3, 17))
         self.assertEqual(
             parse_log_timestamp("host [26/Aug/2026:03:17:00 +0000] request"),
             datetime(2026, 8, 26, 3, 17),
+        )
+        self.assertEqual(
+            parse_log_timestamp("host [26/Aug/2026:03:17:00 -0500] request"),
+            datetime(2026, 8, 26, 8, 17),
+        )
+        self.assertEqual(
+            parse_log_timestamp("2026-08-26T03:17:00-05:00 event"),
+            datetime(2026, 8, 26, 8, 17),
         )
         self.assertEqual(parse_log_timestamp("Aug 26 03:17:00 host service", year=2025), datetime(2025, 8, 26, 3, 17))
         self.assertIsNone(parse_log_timestamp("not a timestamp"))
@@ -161,6 +200,35 @@ class CoreTests(unittest.TestCase):
         self.assertIn(r"Example\x1b[31m", render_text(report))
         self.assertNotIn("private-host", render_json(report))
         self.assertEqual(report.strongest_status(["Disk"]), Severity.WARNING)
+
+    def test_structured_report_redacts_addresses_and_paths(self):
+        report = Report(
+            platform={"host": "private-host", "os": "Linux", "panel": "none"},
+            health=[HealthCheck("Disk /srv/customer/site", Severity.WARNING, "mount /srv/customer/site at 91%")],
+            incidents=[
+                Incident(
+                    key="scoped",
+                    title="Scoped incident",
+                    severity=Severity.INFO,
+                    probable_cause="test_case",
+                    affected_domain="customer.example",
+                    metrics={
+                        "unique_clients": 2,
+                        "source_path": "/home/customer/site/error.log",
+                        "client_address": "2001:db8::10",
+                    },
+                )
+            ],
+            generated_at=datetime.now(timezone.utc),
+        )
+
+        payload = render_json(report)
+        self.assertIn('"schema_version": 1', payload)
+        self.assertNotIn("/srv/customer/site", payload)
+        self.assertNotIn("customer.example", payload)
+        self.assertNotIn("private-host", payload)
+        self.assertNotIn("2001:db8::10", payload)
+        self.assertIn('"domain_scoped": true', payload)
 
     def test_module_failure_becomes_incident(self):
         class BrokenModule(DiagnosticModule):

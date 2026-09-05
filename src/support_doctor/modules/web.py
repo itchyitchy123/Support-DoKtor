@@ -10,10 +10,14 @@ from .base import DiagnosticModule
 class WebModule(DiagnosticModule):
     name = "web"
 
+    def __init__(self, server: str | None = None) -> None:
+        self.server = server
+
     def inspect(self, context: InvestigationContext) -> list[Incident]:
         logs = common_access_logs(context.root)
         incidents = []
-        for server, paths in logs.items():
+        selected = {self.server: logs[self.server]} if self.server else logs
+        for server, paths in selected.items():
             summary = summarize_access(paths, context)
             if summary.requests == 0:
                 continue

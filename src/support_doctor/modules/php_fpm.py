@@ -23,7 +23,9 @@ class PhpFpmModule(DiagnosticModule):
     def inspect(self, context: InvestigationContext) -> list[Incident]:
         log_paths = _php_fpm_logs(context.root)
         hits: list[FpmHit] = []
-        for path, line in safe_read_lines(log_paths, limit=None if context.center_time else 20000):
+        for path, line in safe_read_lines(
+            log_paths, limit=None if context.center_time else 20000, root=context.root, budget=context.scan_budget
+        ):
             ts = parse_log_timestamp(line, year=context.center_time.year if context.center_time else None)
             if not context.in_window(ts):
                 continue
@@ -49,7 +51,7 @@ class PhpFpmModule(DiagnosticModule):
         memory = _php_memory_estimate(context.root)
         safe_max = _safe_max_children(memory["available_mb"], memory["worker_mb"], memory["worker_count"])
         recommendation = _capacity_recommendation(max_children, safe_max)
-        metrics = {
+        metrics: dict[str, Any] = {
             "configured_max_children": max_children,
             "capacity_events": len(hits),
             "current_max_children": max_children,
@@ -59,12 +61,13 @@ class PhpFpmModule(DiagnosticModule):
             "reverse_proxy_detected": nginx.requests > 0 and apache.requests > 0,
         }
         if memory["worker_mb"]:
-            metrics["observed_average_php_memory_mb"] = memory["worker_mb"]
+            metrics["observed_peak_php_memory_mb"] = memory["worker_mb"]
             metrics["observed_php_processes"] = memory["worker_count"]
         if memory["available_mb"]:
             metrics["available_php_budget_mb"] = memory["available_mb"]
         if safe_max is not None:
             metrics["calculated_safe_max_children"] = safe_max
+            metrics["capacity_estimate"] = "heuristic_peak_rss"
 
         timeline = [
             TimelineEvent(
@@ -129,7 +132,7 @@ class PhpFpmModule(DiagnosticModule):
                 proposed_actions=[
                     "Preserve PHP-FPM pool configuration",
                     "Capture per-process PHP memory during a recurrence",
-                    "Calculate safe pm.max_children from observed worker RSS and memory budget",
+                    "Estimate pm.max_children from observed peak worker RSS and memory budget",
                     "Profile the dominant endpoint before increasing concurrency",
                 ],
                 rollback=[
@@ -170,7 +173,7 @@ def _php_memory_estimate(root: Path) -> dict[str, Any]:
         name, _, value = line.strip().partition(" ")
         if "php-fpm" in name.lower() and value.strip().isdigit():
             rss.append(int(value.strip()) // 1024)
-    worker_mb = int(sum(rss) / len(rss)) if rss else 0
+    worker_mb = max(rss) if rss else 0
     worker_count = len(rss)
     mem = command_output(["awk", "/MemAvailable/ {print int($2/1024)}", "/proc/meminfo"])
     try:
@@ -196,7 +199,7 @@ def _php_memory_estimate(root: Path) -> dict[str, Any]:
         "worker_mb": worker_mb,
         "worker_count": worker_count,
         "available_mb": budget,
-        "reason": "Calculated from observed PHP process count and RSS plus 65% of currently available memory as headroom.",
+        "reason": "Heuristic based on peak observed PHP process RSS plus 65% of currently available memory as headroom; validate against service and database usage.",
     }
 
 
@@ -211,4 +214,4 @@ def _capacity_recommendation(current: int, safe: Optional[int]) -> str:
         return "Do not change max_children until worker memory is measured"
     if safe <= current:
         return "DO NOT increase max_children"
-    return f"Consider raising max_children only after validating application latency; calculated ceiling is {safe}"
+    return f"Consider raising max_children only after validating application latency; heuristic estimate is {safe}"

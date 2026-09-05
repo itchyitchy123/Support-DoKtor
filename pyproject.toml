@@ -5,13 +5,24 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "support-doctor"
 version = "0.1.0"
-description = "Internal Linux hosting diagnostic and recovery planning engine"
+description = "Read-first Linux hosting diagnostics and recovery planning for cPanel, CWP, and VPS servers"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Support DoKtor" }]
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["diagnostics", "devops", "hosting", "incident-response", "linux"]
+keywords = [
+  "linux",
+  "sysadmin",
+  "troubleshooting",
+  "incident-response",
+  "observability",
+  "python",
+  "cpanel",
+  "web-hosting",
+  "diagnostics",
+  "site-reliability-engineering",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -26,6 +37,11 @@ classifiers = [
   "Topic :: System :: Systems Administration",
 ]
 dependencies = []
+[project.urls]
+Homepage = "https://github.com/itchyitchy123/Support-DoKtor"
+Repository = "https://github.com/itchyitchy123/Support-DoKtor"
+Issues = "https://github.com/itchyitchy123/Support-DoKtor/issues"
+Changelog = "https://github.com/itchyitchy123/Support-DoKtor/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

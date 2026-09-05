@@ -12,6 +12,9 @@ def render_text(report: Report) -> str:
     lines.extend(_platform(report))
     lines.append("")
     lines.extend(_health(report))
+    if report.collection:
+        lines.append("")
+        lines.extend(_collection(report))
     lines.append("")
     if report.incidents:
         for index, incident in enumerate(report.incidents):
@@ -53,7 +56,7 @@ def render_case_summary(report: Report) -> str:
         current = incident.metrics.get("current_max_children")
         if current and safe <= current:
             details.append(
-                "Increasing PHP-FPM capacity is not currently recommended based on the calculated memory budget"
+                "Increasing PHP-FPM capacity is not currently recommended based on the heuristic memory estimate"
             )
     if details:
         sentence += " " + ". ".join(details) + "."
@@ -67,13 +70,24 @@ def render_case_summary(report: Report) -> str:
 
 
 def render_json(report: Report) -> str:
-    platform = {key: value for key, value in report.platform.items() if key != "host"}
+    platform = _sanitize_structured_value({key: value for key, value in report.platform.items() if key != "host"})
     payload = {
+        "schema_version": 1,
         "generated_at": report.generated_at.isoformat(),
         "mode": report.mode.value,
         "platform": platform,
-        "health": [{"name": h.name, "status": h.status.value, "detail": h.detail} for h in report.health],
-        "incidents": [incident.sanitized_json(report.platform) for incident in report.incidents],
+        "collection": _sanitize_structured_value(report.collection),
+        "health": [
+            {
+                "name": _sanitize_structured_text(h.name),
+                "status": h.status.value,
+                "detail": _sanitize_structured_text(h.detail),
+            }
+            for h in report.health
+        ],
+        "incidents": [
+            _sanitize_structured_value(incident.sanitized_json(report.platform)) for incident in report.incidents
+        ],
     }
     return json.dumps(payload, indent=2, sort_keys=True)
 
@@ -95,6 +109,14 @@ def _health(report: Report) -> list[str]:
     for item in report.health:
         lines.append(f"  {item.name + ':':<18}{item.status.value:<9} {_display(item.detail)}")
     return lines
+
+
+def _collection(report: Report) -> list[str]:
+    files = report.collection.get("log_files_read", 0)
+    size = report.collection.get("log_bytes_read", 0)
+    limited = report.collection.get("scan_limit_reached", False)
+    suffix = "; collection limit reached" if limited else ""
+    return ["Collection:", f"  Log input:       {files} file(s), {size} byte(s){suffix}"]
 
 
 def _incident(incident: Incident) -> list[str]:
@@ -158,3 +180,25 @@ def _display(value: object) -> str:
     """Prevent log content from emitting terminal control sequences."""
     text = str(value)
     return re.sub(r"[\x00-\x1f\x7f]", lambda match: f"\\x{ord(match.group(0)):02x}", text)
+
+
+def _sanitize_structured_text(value: object) -> str:
+    """Keep host paths and addresses out of machine-readable reports."""
+    text = _display(value)
+    text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<ip>", text)
+    text = re.sub(r"(?<![\w:])(?:[0-9A-Fa-f]{1,4}:){2,}[0-9A-Fa-f:.]*(?![\w:])", "<ip>", text)
+    if text.startswith("/"):
+        return text
+    text = re.sub(r"(?<![\w.-])(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?", "<host>", text)
+    text = re.sub(r"(?<![\w:])/(?:home|var|srv|opt|usr|root|tmp|etc|mnt|proc|sys)(?:/|\b)[^\s,;:()]*", "<path>", text)
+    return text
+
+
+def _sanitize_structured_value(value: object) -> object:
+    if isinstance(value, dict):
+        return {key: _sanitize_structured_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_structured_value(item) for item in value]
+    if isinstance(value, str):
+        return _sanitize_structured_text(value)
+    return value

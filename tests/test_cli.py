@@ -171,7 +171,7 @@ def _write_fixture(root: Path) -> None:
         )
         + "\n",
     )
-    access_line = '203.0.113.10 - - [26/Aug/2026:06:40:21 -0500] "GET /ajax.php HTTP/1.1" 200 123 "https://practice.example.com" "curl"\n'
+    access_line = '203.0.113.10 - - [26/Aug/2026:06:40:21 +0000] "GET /ajax.php HTTP/1.1" 200 123 "https://practice.example.com" "curl"\n'
     _write(root / "var/log/nginx/access.log", access_line * 278)
     _write(root / "etc/os-release", 'PRETTY_NAME="AlmaLinux 9.7"\n')
 

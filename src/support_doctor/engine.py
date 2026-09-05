@@ -20,8 +20,8 @@ from .platform import detect_platform
 
 MODULES: dict[str, DiagnosticModule] = {
     "web": WebModule(),
-    "apache": WebModule(),
-    "nginx": WebModule(),
+    "apache": WebModule("apache"),
+    "nginx": WebModule("nginx"),
     "php-fpm": PhpFpmModule(),
     "mysql": MysqlModule(),
     "mariadb": MysqlModule(),
@@ -50,6 +50,7 @@ def run_investigation(context: InvestigationContext, module_names: list[str] | N
         incidents=incidents,
         generated_at=datetime.now(timezone.utc),
         mode=context.mode,
+        collection=context.collection_summary(),
     )
 
 
@@ -65,6 +66,7 @@ def run_single_module(module_name: str, context: InvestigationContext) -> Report
         incidents=incidents,
         generated_at=datetime.now(timezone.utc),
         mode=context.mode,
+        collection=context.collection_summary(),
     )
 
 
@@ -82,6 +84,7 @@ def _run_module(module: DiagnosticModule, context: InvestigationContext) -> list
                 title=f"{module.name} diagnostic failed",
                 severity=Severity.WARNING,
                 probable_cause="diagnostic_collection_failure",
+                metrics={"error_type": type(exc).__name__},
                 evidence=[Evidence(module.name, f"{type(exc).__name__}: {exc}", Severity.WARNING)],
                 recommendations=[
                     Recommendation("Retry with narrower scope", "The module could not collect complete evidence.")

@@ -6,6 +6,7 @@ from pathlib import Path
 from support_doctor.context import InvestigationContext
 from support_doctor.logs import common_access_logs, summarize_access
 from support_doctor.models import Evidence, Incident, Recommendation, Severity
+from support_doctor.util import ScanBudget
 
 from .base import DiagnosticModule
 
@@ -24,7 +25,7 @@ class WordpressModule(DiagnosticModule):
             for endpoint, count in summary.endpoints.items()
             if "wp-admin/admin-ajax.php" in endpoint or "xmlrpc.php" in endpoint or "wp-cron.php" in endpoint
         }
-        roots = _wordpress_roots(context.root)
+        roots = _wordpress_roots(context.root, context.scan_budget)
         if not wp_hits and not roots:
             return []
         severity = Severity.WARNING if wp_hits else Severity.INFO
@@ -54,13 +55,23 @@ class WordpressModule(DiagnosticModule):
         ]
 
 
-def _wordpress_roots(root: Path) -> list[Path]:
+def _wordpress_roots(root: Path, budget: ScanBudget | None = None) -> list[Path]:
+    boundary = root.resolve()
     bases = [root / "home", root / "var/www", root / "usr/local/apache/htdocs"]
     results: list[Path] = []
     visited = 0
     for base in bases:
+        if not _within_root(base, boundary):
+            continue
         for current, directories, files in os.walk(base, topdown=True, onerror=lambda _error: None, followlinks=False):
+            if budget is not None and not budget.visit_directory():
+                return results
             visited += 1
+            current_path = Path(current)
+            if not _within_root(current_path, boundary):
+                directories.clear()
+                continue
+            directories[:] = [directory for directory in directories if not (current_path / directory).is_symlink()]
             directories.sort()
             if visited >= MAX_WORDPRESS_DIRECTORIES:
                 directories.clear()
@@ -71,3 +82,11 @@ def _wordpress_roots(root: Path) -> list[Path]:
             if visited >= MAX_WORDPRESS_DIRECTORIES:
                 return results
     return results
+
+
+def _within_root(path: Path, boundary: Path) -> bool:
+    try:
+        path.resolve().relative_to(boundary)
+    except ValueError:
+        return False
+    return True

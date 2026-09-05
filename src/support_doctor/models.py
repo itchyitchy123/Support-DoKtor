@@ -78,7 +78,9 @@ class Incident:
             "php": platform.get("php", "unknown"),
             "database": platform.get("database", "unknown"),
             "cause": self.probable_cause,
-            "affected_domain": self.affected_domain,
+            # Domains are useful in the terminal report but are hostnames in
+            # practice. Keep them out of fleet analytics by design.
+            "domain_scoped": self.affected_domain is not None,
             "primary_endpoint": self.primary_endpoint,
             "first_seen": self.first_seen.isoformat() if self.first_seen else None,
             "metrics": self.metrics,
@@ -100,6 +102,7 @@ class Report:
     incidents: list[Incident]
     generated_at: datetime
     mode: Mode = Mode.INSPECT
+    collection: dict[str, Any] = field(default_factory=dict)
 
     def strongest_status(self, names: Iterable[str]) -> Severity:
         rank = {

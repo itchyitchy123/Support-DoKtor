@@ -26,7 +26,9 @@ class SecurityModule(DiagnosticModule):
             context.root / "var/log/lfd.log",
             context.root / "var/log/fail2ban.log",
         ]:
-            for source, line in safe_read_lines([path], limit=None if context.center_time else 20000):
+            for source, line in safe_read_lines(
+                [path], limit=None if context.center_time else 20000, root=context.root, budget=context.scan_budget
+            ):
                 ts = parse_log_timestamp(line, year=context.center_time.year if context.center_time else None)
                 if not context.in_window(ts):
                     continue
